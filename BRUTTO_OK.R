@@ -15,6 +15,9 @@ titles <- c()
 descriptions <- c()
 specifications_list <- list()
 prices <- c()
+producers <- c()
+ratings <- c()
+reviews_counts <- c()
 
 # Iterujemy przez każdy kontener produktu
 for (product in product_containers) {
@@ -55,6 +58,28 @@ for (product in product_containers) {
   # Dodaj specyfikacje produktu jako lista do listy głównej
   specifications_list[[length(specifications_list) + 1]] <- specifications
   
+  # Wyciągnij producenta produktu
+  producer <- product %>% html_node(".product-info .info a strong") %>% html_text(trim = TRUE)
+  producers <- c(producers, producer)
+  
+  # Wyciągnij ocenę produktu
+  rating_text <- product %>% html_node(".info .avg") %>% html_text(trim = TRUE)
+  rating <- stri_extract_first_regex(rating_text, "\\d+\\.\\d+")  # Wyciągnij wartość liczbową oceny
+  if (is.na(rating)) {
+    ratings <- c(ratings, NA)  # Jeśli brak oceny, dodajemy NA
+  } else {
+    ratings <- c(ratings, rating)
+  }
+  
+  # Wyciągnij liczbę opinii lub tekst "Brak opinii"
+  reviews_text <- product %>% html_node(".info .comments") %>% html_text(trim = TRUE)
+  reviews_count <- stri_extract_first_regex(reviews_text, "\\d+")  # Wyciągnij liczbę opinii
+  if (is.na(reviews_count)) {
+    reviews_counts <- c(reviews_counts, "Brak opinii")  # Jeśli brak opinii, dodajemy tekst "Brak opinii"
+  } else {
+    reviews_counts <- c(reviews_counts, reviews_count)
+  }
+  
   # Wyciągnij pełny tekst z sekcji "price"
   price_text <- product %>% html_node(".product_prices .price") %>% html_text(trim = TRUE)
   
@@ -93,6 +118,11 @@ print(titles[2])  # Drugi tytuł
 print(descriptions[1])  # Pierwszy opis (bez "Przeczytaj dalej")
 print(prices[1])  # Cena pierwszego produktu
 print(specifications_list[[1]])  # Specyfikacje dla 1. produktu
+print(producers[1]) #producent 1 kawy
+print(ratings[2])
+print(reviews_counts[2])
 
 # Uzyskanie 2. cechy specyfikacji dla 1. produktu
 print(specifications_list[[1]][2])  # 2. element specyfikacji dla 1. produktu
+
+

@@ -1,10 +1,8 @@
+library(httr)
 library(rvest)
 library(stringi)
 
-url <- "https://www.konesso.pl/pol_m_Kawa_Rodzaj_Kawa-ziarnista-2160.html"
-webpage <- read_html(url)
-product_containers <- webpage %>% html_nodes("div.product_wrapper")
-
+base_url <- "https://www.konesso.pl/pol_m_Kawa_Rodzaj_Kawa-ziarnista-2160.html?counter="
 titles <- c()
 descriptions <- c()
 specifications_list <- list()
@@ -12,71 +10,109 @@ prices <- c()
 producers <- c()
 ratings <- c()
 reviews_counts <- c()
+num_pages <- 65
 
-for (product in product_containers) {
-  title <- product %>% html_element("h5") %>% html_text(trim = TRUE)
-  titles <- c(titles, title)
+process_product <- function(product) {
+  title <- tryCatch(product %>% html_element("h5") %>% html_text(trim = TRUE), 
+                    error = function(e) NA)
+  titles <<- c(titles, title)
   
-  description <- product %>% html_element(".product-desc") %>% html_text(trim = TRUE)
-  description <- stri_replace_all_fixed(description, "Przeczytaj dalej", "")
-  description <- stri_replace_all_fixed(description, "\n", " ")
-  description <- stri_replace_all_regex(description, "\\s+", " ")
-  description <- stri_trim_both(description)
-  descriptions <- c(descriptions, description)
+  description <- tryCatch({
+    text <- product %>% html_element(".product-desc") %>% html_text(trim = TRUE)
+    text <- stri_replace_all_fixed(text, "Przeczytaj dalej", "") %>%
+      stri_replace_all_fixed("\n", " ") %>%
+      stri_replace_all_regex("\\s+", " ") %>%
+      stri_trim_both()
+    text
+  }, error = function(e) NA)
+  descriptions <<- c(descriptions, description)
   
-  specifications <- product %>% html_elements(".traits_info ul li") %>% html_text(trim = TRUE)
-  specifications <- stri_replace_all_fixed(specifications, "\n", " ")
-  specifications <- stri_replace_all_regex(specifications, "\\s+", " ")
-  specifications <- stri_trim_both(specifications)
-  specifications_list[[length(specifications_list) + 1]] <- specifications
+  specifications <- tryCatch({
+    product %>% html_elements(".traits_info ul li") %>% html_text(trim = TRUE) %>%
+      stri_replace_all_fixed("\n", " ") %>%
+      stri_replace_all_regex("\\s+", " ") %>%
+      stri_trim_both()
+  }, error = function(e) NA)
+  specifications_list[[length(specifications_list) + 1]] <<- specifications
   
-  producer <- product %>% html_node(".product-info .info a strong") %>% html_text(trim = TRUE)
-  producers <- c(producers, producer)
+  producer <- tryCatch(product %>% html_node(".product-info .info a strong") %>% html_text(trim = TRUE), 
+                       error = function(e) NA)
+  producers <<- c(producers, producer)
   
-  rating_text <- product %>% html_node(".info .avg") %>% html_text(trim = TRUE)
-  rating <- stri_extract_first_regex(rating_text, "\\d+\\.\\d+")
-  if (is.na(rating)) {
-    ratings <- c(ratings, NA)
-  } else {
-    ratings <- c(ratings, rating)
-  }
+  rating <- tryCatch({
+    text <- product %>% html_node(".info .avg") %>% html_text(trim = TRUE)
+    stri_extract_first_regex(text, "\\d+\\.\\d+")
+  }, error = function(e) NA)
+  ratings <<- c(ratings, rating)
   
-  reviews_text <- product %>% html_node(".info .comments") %>% html_text(trim = TRUE)
-  reviews_count <- stri_extract_first_regex(reviews_text, "\\d+")
-  if (is.na(reviews_count)) {
-    reviews_counts <- c(reviews_counts, "Brak opinii")
-  } else {
-    reviews_counts <- c(reviews_counts, reviews_count)
-  }
+  reviews_count <- tryCatch({
+    text <- product %>% html_node(".info .comments") %>% html_text(trim = TRUE)
+    stri_extract_first_regex(text, "\\d+")
+  }, error = function(e) "Brak opinii")
+  reviews_counts <<- c(reviews_counts, reviews_count)
   
-  price_text <- product %>% html_node(".product_prices .price") %>% html_text(trim = TRUE)
-  brutto_price <- stri_extract_first_regex(price_text, "(\\d+,\\d+)\\s*zł\\s*brutto")
-  if (!is.na(brutto_price)) {
-    brutto_price <- stri_replace_all_fixed(brutto_price, "brutto", "")
-    brutto_price <- stri_replace_all_fixed(brutto_price, ",", ".")
-    brutto_price <- stri_replace_all_fixed(brutto_price, " zł", "")
-    prices <- c(prices, brutto_price)
-  } else {
-    prices <- c(prices, NA)
-  }
+  price <- tryCatch({
+    text <- product %>% html_node(".product_prices .price") %>% html_text(trim = TRUE)
+    brutto_price <- stri_extract_first_regex(text, "(\\d+,\\d+)\\s*zł\\s*brutto")
+    if (!is.na(brutto_price)) {
+      brutto_price <- stri_replace_all_fixed(brutto_price, "brutto", "") %>%
+        stri_replace_all_fixed(",", ".") %>%
+        stri_replace_all_fixed(" zł", "")
+    }
+    brutto_price
+  }, error = function(e) NA)
+  prices <<- c(prices, price)
   
-  Sys.sleep(2)
+  Sys.sleep(1)
 }
 
-num_products <- 5
-data <- data.frame(
-  Title = titles[1:num_products],
-  Description = descriptions[1:num_products],
-  Price = prices[1:num_products]
-)
-data$Specifications <- specifications_list[1:num_products]
+for (page_num in 1:num_pages) {
+  url <- paste0(base_url, page_num)
+  response <- tryCatch(
+    GET(url, user_agent("I am a student of PWr. Problem? Write to stud@pwr.pl")),
+    error = function(e) {
+      message("Błąd podczas pobierania strony dla strony numer ", page_num, ": ", e)
+      return(NULL)
+    }
+  )
+  
+  if (is.null(response) || status_code(response) != 200) next
+  
+  webpage <- tryCatch(content(response, "text", encoding = "UTF-8") %>% read_html(), 
+                      error = function(e) {
+                        message("Błąd podczas parsowania zawartości strony ", page_num, ": ", e)
+                        return(NULL)
+                      })
+  
+  if (is.null(webpage)) next
+  
+  product_containers <- webpage %>% html_nodes("div.product_wrapper")
+  lapply(product_containers, process_product)
+}
 
-print(data)
-print(titles[2])
-print(descriptions[1])
-print(prices[1])
-print(specifications_list[[1]])
-print(producers[1])
-print(ratings[2])
-print(reviews_counts[2])
-print(specifications_list[[1]][2])
+data <- data.frame(
+  Title = titles,
+  Description = descriptions,
+  Price = prices,
+  Producer = producers,
+  Rating = ratings,
+  Review_count = reviews_counts
+)
+data$Specifications <- sapply(specifications_list, function(specs) {
+  if (length(specs) > 0) {
+    paste(specs, collapse = " | ")
+  } else {
+    NA
+  }
+})
+
+output_file <- "kawa.csv"
+write.csv2(data, file = output_file, row.names = FALSE, fileEncoding = "UTF-8")
+
+output_file_with_bom <- "kawa_with_bom_ok.csv"
+con <- file(output_file_with_bom, open = "wt", encoding = "UTF-8")
+writeLines("\ufeff", con)
+write.table(data, file = con, sep = ";", row.names = FALSE, col.names = TRUE, fileEncoding = "UTF-8")
+close(con)
+
+print(paste("Data saved to", output_file_with_bom))

@@ -1,5 +1,7 @@
 library(tidyverse)
 library(stringi)
+library(dplyr)
+library(ggplot2)
 
 # Wczytanie pliku z odpowiednim separatorem
 df_kawa <- read_csv2("kawa_with_bom_ok.csv", locale = locale(encoding = "UTF-8"))
@@ -104,3 +106,11 @@ df_kawa_filtered$Ocena <- as.numeric(df_kawa_filtered$Ocena)
 # Sprawdzamy wynikowy data frame
 str(df_kawa_filtered)
 
+df_kawa_filtered$Opakowanie <- ifelse(df_kawa_filtered$Opakowanie == " 1000", 
+                                      " 1000g", 
+                                      df_kawa_filtered$Opakowanie)
+table(df_kawa_filtered$Opakowanie)
+
+
+# Save the dataframe to a CSV file
+write.csv(df_kawa_filtered, "kawa_filtered.csv", row.names = FALSE)

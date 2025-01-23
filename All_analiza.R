@@ -1,0 +1,309 @@
+# Load necessary libraries
+library(tidyverse)
+library(stringi)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+
+# Wczytanie pliku z odpowiednim separatorem
+df_kawa <- read_csv2("kawa_with_bom_ok.csv", locale = locale(encoding = "UTF-8"))
+
+# Funkcja, która przetwarza specyfikacje z jednej kawy
+process_specifications <- function(specifications_text) {
+  specs <- stri_split_fixed(specifications_text, " | ", simplify = TRUE)
+  spec_names <- stri_extract(specs, regex = "^[^:]+(?=:)")
+  spec_values <- stri_extract(specs, regex = "(?<=:).+$")
+  
+  spec_list <- setNames(spec_values, spec_names)
+  return(spec_list)
+}
+
+# Przetwarzamy specyfikacje i tworzymy dodatkowe kolumny
+specifications_processed <- lapply(df_kawa$Specifications, process_specifications)
+
+# Zamiana wyników na data frame
+specifications_df <- bind_rows(specifications_processed)
+
+# Dołączamy te kolumny do głównego data frame
+df_kawa <- bind_cols(df_kawa, specifications_df)
+
+# Usuwamy oryginalną kolumnę 'Specifications'
+df_kawa <- df_kawa %>% select(-Specifications)
+
+# Zidentyfikujmy liczbę nie-NA wartości w każdej kolumnie
+non_na_counts <- colSums(!is.na(df_kawa))
+
+# Filtrujemy kolumny, w których liczba nie-NA wartości jest większa lub równa 1000
+df_kawa_filtered <- df_kawa[, non_na_counts >= 1000]
+
+# Zmiana nazw kolumn na polski, podkreślenia zamiast spacji i myślników
+colnames(df_kawa_filtered) <- c(
+  "Tytuł", "Opis", "Cena", "Producent", "Ocena", "Liczba_opinii",
+  "Skład", "Stopień_palenia", "Zawartość_kofeiny", "Rodzaj", "Palarnia", 
+  "Przeznaczenie", "Opakowanie", "Sposób_przygotowania", "Crema", "Wyczuwalne_smaki", 
+  "Intensywność_smaku", "Gorycz", "Kwasowość", "Słodycz", 
+  "Pochodzenie_ziaren", "Blend_czy_Single", "Polecana_do", "Kawa_Specialty"
+)
+
+# Zamiana spacji oraz myślników na podkreślenia w nazwach kolumn
+colnames(df_kawa_filtered) <- gsub(" |-", "_", colnames(df_kawa_filtered))
+
+# Funkcja do konwersji wartości na skalę 1/5 do 5/5
+convert_to_5_scale <- function(value) {
+  value <- gsub(" ", "", value)  # Usuwamy białe znaki
+  if (grepl("Delikatna", value)) {
+    return(0.2)
+  } else if (grepl("Średnia", value)) {
+    return(0.6)
+  } else if (grepl("Mocna", value)) {
+    return(1)
+  }
+  
+  # Dla wartości numerycznych jak "2/5", "3/5"
+  if (grepl("^\\d+/\\d+$", value)) {
+    return(as.numeric(stri_extract(value, regex = "^\\d+")) / as.numeric(stri_extract(value, regex = "(?<=/).*")))
+  }
+  
+  # Dla wartości numerycznych jak "1", "2", "3", "4", "5"
+  if (grepl("^\\d+$", value)) {
+    if (as.numeric(value) == 1) {
+      return(0.2)
+    } else if (as.numeric(value) == 2) {
+      return(0.4)
+    } else if (as.numeric(value) == 3) {
+      return(0.6)
+    } else if (as.numeric(value) == 4) {
+      return(0.8)
+    } else {
+      return(1)
+    }
+  }
+  
+  return(NA)
+}
+
+# Zastosowanie funkcji do przekształcenia na skalę 1/5 do 5/5 w odpowiednich kolumnach
+df_kawa_filtered$Gorycz <- sapply(df_kawa_filtered$Gorycz, convert_to_5_scale)
+df_kawa_filtered$Kwasowość <- sapply(df_kawa_filtered$Kwasowość, convert_to_5_scale)
+df_kawa_filtered$Słodycz <- sapply(df_kawa_filtered$Słodycz, convert_to_5_scale)
+df_kawa_filtered$Intensywność_smaku <- sapply(df_kawa_filtered$Intensywność_smaku, convert_to_5_scale)
+
+# Usuwamy atrybuty "names" za pomocą unname()
+df_kawa_filtered$Gorycz <- unname(df_kawa_filtered$Gorycz)
+df_kawa_filtered$Kwasowość <- unname(df_kawa_filtered$Kwasowość)
+df_kawa_filtered$Słodycz <- unname(df_kawa_filtered$Słodycz)
+df_kawa_filtered$Intensywność_smaku <- unname(df_kawa_filtered$Intensywność_smaku)
+
+# Dzielimy cenę przez 100 i formatowanie jej z dwoma miejscami po przecinku
+df_kawa_filtered$Cena <- as.numeric(df_kawa_filtered$Cena) / 100
+df_kawa_filtered$Cena <- format(df_kawa_filtered$Cena, nsmall = 2)
+
+# Konwersja kolumny Ocena z typu chr na num (float)
+df_kawa_filtered$Ocena <- as.numeric(df_kawa_filtered$Ocena)
+
+# Sprawdzamy wynik po formatowaniu
+str(df_kawa_filtered)
+
+df_kawa_filtered$Opakowanie <- ifelse(df_kawa_filtered$Opakowanie == " 1000", 
+                                      " 1000g", 
+                                      df_kawa_filtered$Opakowanie)
+table(df_kawa_filtered$Opakowanie)
+
+# Price Range Analysis
+
+# Step 1: Standardize and clean the 'Opakowanie' column
+df_kawa_filtered$Waga_g <- as.numeric(gsub("[^0-9]", "", df_kawa_filtered$Opakowanie))
+
+# Handle specific cases
+df_kawa_filtered$Waga_g[grepl("Szklana butelka", df_kawa_filtered$Opakowanie)] <- NA  # Non-numeric, set to NA
+
+# Step 2: Clean 'Cena' and convert to numeric
+df_kawa_filtered$Cena <- as.numeric(gsub(",", ".", gsub("\\s", "", df_kawa_filtered$Cena)))
+
+# Step 3: Calculate "Price per Gram", excluding rows with NA in Weight_g or Cena
+df_kawa_filtered <- df_kawa_filtered[!is.na(df_kawa_filtered$Waga_g) & !is.na(df_kawa_filtered$Cena), ]
+df_kawa_filtered$Cena_za_gram <- df_kawa_filtered$Cena / df_kawa_filtered$Waga_g
+
+# Step 4: Group coffees into price ranges
+df_kawa_filtered$Przedział_cenowy <- cut(
+  df_kawa_filtered$Cena_za_gram,
+  breaks = c(0, 0.05, 0.1, 0.2, Inf),
+  labels = c("Budget (< 0.05)", "Mid-range (0.05 - 0.1)", "Premium (0.1 - 0.2)", "Luxury (> 0.2)"),
+  right = FALSE
+)
+
+# Adding Adjusted Ratings Column
+
+# Step 1: Handle NA values in 'Ocena' and 'Liczba_opinii'
+df_kawa_filtered$Ocena[is.na(df_kawa_filtered$Ocena)] <- 0
+df_kawa_filtered$Liczba_opinii[is.na(df_kawa_filtered$Liczba_opinii)] <- 0
+
+# Step 2: Calculate the "Skorygowana ocena" 
+df_kawa_filtered$Skorygowana_ocena <- df_kawa_filtered$Ocena * sqrt(df_kawa_filtered$Liczba_opinii)
+
+# Step 3: Preview the result
+head(df_kawa_filtered[, c("Ocena", "Liczba_opinii", "Skorygowana_ocena")])
+
+head(df_kawa_filtered)
+
+summary_stats <- df_kawa_filtered %>%
+  select(Cena, Ocena, Liczba_opinii, Gorycz, Kwasowość, Słodycz, Intensywność_smaku, Cena_za_gram, Skorygowana_ocena) %>%
+  summary()
+
+# Dodatkowe statystyki: średnia, odchylenie standardowe, min, max
+detailed_stats <- df_kawa_filtered %>%
+  select(Cena, Ocena, Liczba_opinii, Gorycz, Kwasowość, Słodycz, Intensywność_smaku, Cena_za_gram, Skorygowana_ocena) %>%
+  summarise(
+    Mean_Cena = mean(Cena, na.rm = TRUE),
+    SD_Cena = sd(Cena, na.rm = TRUE),
+    Min_Cena = min(Cena, na.rm = TRUE),
+    Max_Cena = max(Cena, na.rm = TRUE),
+    
+    Mean_Ocena = mean(Ocena, na.rm = TRUE),
+    SD_Ocena = sd(Ocena, na.rm = TRUE),
+    Min_Ocena = min(Ocena, na.rm = TRUE),
+    Max_Ocena = max(Ocena, na.rm = TRUE),
+    
+    Mean_Liczba_opinii = mean(Liczba_opinii, na.rm = TRUE),
+    SD_Liczba_opinii = sd(Liczba_opinii, na.rm = TRUE),
+    Min_Liczba_opinii = min(Liczba_opinii, na.rm = TRUE),
+    Max_Liczba_opinii = max(Liczba_opinii, na.rm = TRUE),
+    
+    Mean_Gorycz = mean(Gorycz, na.rm = TRUE),
+    SD_Gorycz = sd(Gorycz, na.rm = TRUE),
+    Min_Gorycz = min(Gorycz, na.rm = TRUE),
+    Max_Gorycz = max(Gorycz, na.rm = TRUE),
+    
+    Mean_Kwasowość = mean(Kwasowość, na.rm = TRUE),
+    SD_Kwasowość = sd(Kwasowość, na.rm = TRUE),
+    Min_Kwasowość = min(Kwasowość, na.rm = TRUE),
+    Max_Kwasowość = max(Kwasowość, na.rm = TRUE),
+    
+    Mean_Słodycz = mean(Słodycz, na.rm = TRUE),
+    SD_Słodycz = sd(Słodycz, na.rm = TRUE),
+    Min_Słodycz = min(Słodycz, na.rm = TRUE),
+    Max_Słodycz = max(Słodycz, na.rm = TRUE),
+    
+    Mean_Intensywność_smaku = mean(Intensywność_smaku, na.rm = TRUE),
+    SD_Intensywność_smaku = sd(Intensywność_smaku, na.rm = TRUE),
+    Min_Intensywność_smaku = min(Intensywność_smaku, na.rm = TRUE),
+    Max_Intensywność_smaku = max(Intensywność_smaku, na.rm = TRUE),
+    
+    Mean_Cena_za_gram = mean(Cena_za_gram, na.rm = TRUE),
+    SD_Cena_za_gram = sd(Cena_za_gram, na.rm = TRUE),
+    Min_Cena_za_gram = min(Cena_za_gram, na.rm = TRUE),
+    Max_Cena_za_gram = max(Cena_za_gram, na.rm = TRUE),
+    
+    Mean_Skorygowana_ocena = mean(Skorygowana_ocena, na.rm = TRUE),
+    SD_Skorygowana_ocena = sd(Skorygowana_ocena, na.rm = TRUE),
+    Min_Skorygowana_ocena = min(Skorygowana_ocena, na.rm = TRUE),
+    Max_Skorygowana_ocena = max(Skorygowana_ocena, na.rm = TRUE)
+  )
+
+# Wyświetlenie statystyk
+print(summary_stats)
+print(detailed_stats)
+
+# Save the dataframe to a CSV file
+write.csv(df_kawa_filtered, "kawa_filtered.csv", row.names = FALSE)
+
+# Step 5: Visualize the distribution of products in each price range
+ggplot(df_kawa_filtered, aes(x = Przedział_cenowy)) +
+  geom_bar(fill = "steelblue", color = "black") +
+  labs(
+    title = "Distribution of Products by Price Range",
+    x = "Price Range (PLN per Gram)",
+    y = "Number of Products"
+  ) +
+  theme_minimal()
+
+# Analyzing Producers, Number of Opinions, and Ratings
+
+# Step 1: Calculate average number of ratings and adjusted ratings for each producer
+producer_analysis <- df_kawa_filtered %>%
+  group_by(Producent) %>%
+  summarise(
+    Avg_Num_Ratings = mean(Liczba_opinii, na.rm = TRUE),
+    Avg_Adjusted_Rating = mean(Skorygowana_ocena, na.rm = TRUE),
+    Count_Products = n()
+  ) %>%
+  arrange(desc(Avg_Num_Ratings))  # Sort by popularity
+
+# Step 2: Top producers by average number of ratings
+top_popular_producers <- producer_analysis %>%
+  top_n(10, Avg_Num_Ratings)
+
+# Step 3: Top producers by adjusted rating
+top_adjusted_rating_producers <- producer_analysis %>%
+  top_n(10, Avg_Adjusted_Rating)
+
+# Step 4: Visualize popularity
+ggplot(top_popular_producers, aes(x = reorder(Producent, Avg_Num_Ratings), y = Avg_Num_Ratings)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top Producers by Average Number of Ratings",
+    x = "Producer",
+    y = "Average Number of Ratings"
+  ) +
+  theme_minimal()
+
+ggplot(top_adjusted_rating_producers, aes(x = reorder(Producent, Avg_Adjusted_Rating), y = Avg_Adjusted_Rating)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(
+    title = "Top Producers by Average Adjusted Rating",
+    x = "Producer",
+    y = "Average Adjusted Rating"
+  ) +
+  theme_minimal()
+
+# Correlation Analysis of Coffee Specifications and Adjusted Rating
+
+# Step 1: Prepare data for correlation analysis
+correlation_data <- df_kawa_filtered %>%
+  select(Kwasowość, Gorycz, Słodycz, Intensywność_smaku, Skorygowana_ocena) %>%
+  na.omit()  # Remove rows with NA values
+
+# Step 2: Compute the correlation matrix
+correlation_matrix <- cor(correlation_data)
+
+
+
+# Convert matrix to long format for ggplot
+correlation_long <- melt(correlation_matrix)
+
+# Plot heatmap
+ggplot(correlation_long, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text = element_text(size = 10)
+  ) +
+  labs(
+    title = "Correlation Heatmap",
+    x = "Specifications",
+    y = "Specifications"
+  )
+
+# Distribution of Coffee Intensity (Flavor)
+ggplot(df_kawa_filtered, aes(x = Intensywność_smaku)) +
+  geom_histogram(binwidth = 0.1, fill = "lightblue", color = "black") +
+  labs(
+    title = "Distribution of Coffee Intensity (Flavor)",
+    x = "Flavor Intensity (Scale 1-5)",
+    y = "Number of Products"
+  ) +
+  theme_minimal()
+
+# Coffee Price vs. Rating
+ggplot(df_kawa_filtered, aes(x = Cena, y = Ocena)) +
+  geom_point(color = "steelblue", alpha = 0.6) +
+  labs(
+    title = "Coffee Price vs. Rating",
+    x = "Price (PLN)",
+    y = "Rating"
+  ) +
+  theme_minimal()

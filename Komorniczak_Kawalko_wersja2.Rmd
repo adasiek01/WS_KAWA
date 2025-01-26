@@ -1,0 +1,457 @@
+---
+title: "Supporting assortment selection process for coffee shop"
+author: "Alicja Komorniczak 260549, Adam Kawałko 262329"
+date: "`r format(Sys.time(), '%m/%d/%Y %X')`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    number_sections: true
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+## Global options
+library(knitr)
+opts_chunk$set(echo = TRUE, 
+               cache = FALSE,
+               prompt = FALSE,
+               tidy = TRUE,
+               comment = NA,
+               message = FALSE,
+               warning = FALSE,
+               fig.width = 7.4,
+               fig.height = 4.7,
+               fig.align = "center")
+opts_knit$set(width = 80)
+```
+
+# Introduction
+
+This report focuses on the analysis of a large dataset of coffee products, which includes a variety of specifications, ratings, and other characteristics related to the products. Our goal is to gain insights into the coffee market, examining factors such as price range, ratings, and the relationship between coffee specifications and their adjusted ratings. Through data cleaning and statistical analysis, we aim to uncover trends and patterns in the dataset that can help understand trends and dependencies in coffee market.
+
+The information we got from konesso website contains several attributes, such as price, rating, number of opinions, flavor profiles (bitterness, acidity, sweetness, flavor intensity), and other product specifications like the coffee's origin, roaster, and packaging. Using this information, we perform a series of transformations and visualizations to provide a deeper understanding of how different factors contribute to coffee ratings and market pricing.   
+
+# Data scraping
+
+In order to obtain dataset with information from konesso website with all necessery attributes for analysis, we scrape these information using appropiate code in R.
+From each coffee bean product on konesso we scraped the following information: 
+
+1. product name,
+2. product description,
+3. specifications (such as degree of smoking, acidity etc.),
+4. price,
+5. producer,
+6. rating,
+7. number of reviews.
+
+These were the key attributes targeted for extraction during this project.
+
+## Main core of scraper
+
+All necessary libraries were imported at the beginning of the script to handle `HTTP` requests, parse `HTML` content, process text data, and handle potential errors during the scraping process.
+
+```{r}
+library(httr)
+library(rvest)
+library(stringi)
+```
+The base URL of the webpage was defined, and an `HTTP GET` request was sent to access the page content while using a user-agent header.
+```{r}
+# Fetch content of the webpage with a user-agent header
+url <- "https://www.konesso.pl/pol_m_Kawa_Rodzaj_Kawa-ziarnista-2160.html"
+
+
+# response <- tryCatch(
+#   GET(url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")),
+#   error = function(e) stop("Error during page fetch: ", e)
+# )
+```
+
+Once the page's content was retrieved successfully, it was parsed into an `HTML` object using the `rvest` package, and product containers were extracted for further processing. 
+
+```{r}
+# Check status of the response (now we skip this as no data will be fetched)
+# if (status_code(response) != 200) stop("Failed to fetch page content")
+# webpage <- tryCatch(
+#   content(response, "text", encoding = "UTF-8") %>% read_html(),
+#   error = function(e) stop("Error during page parsing: ", e)
+# )
+```
+
+## Data Extraction
+
+The scraper iteratively processed each product container to extract specific attributes. For each attribute, list was initialized to store them. A delay of two seconds `(Sys.sleep(2))` was implemented between each iteration to avoid overwhelming the server and potential blocking.
+
+For the purpose of example, the code below contains sample data instead of scarped content. The full scaring code is available in the attachment file `scraper.R`.
+
+```{r}
+
+# Initialize lists to store data
+# Using sample data instead of scraped content
+product_containers <- list()  # No actual data to process
+titles <- c("Sample Title 1", "Sample Title 2", "Sample Title 3", "Sample Title 4", "Sample Title 5")
+descriptions <- c("Product description 1", "Product description 2", "Product description 3", "Product description 4", "Product description 5")
+specifications_list <- list(
+  c("Specification 1.1", "Specification 1.2"),
+  c("Specification 2.1", "Specification 2.2"),
+  c("Specification 3.1", "Specification 3.2"),
+  c("Specification 4.1", "Specification 4.2"),
+  c("Specification 5.1", "Specification 5.2")
+)
+prices <- c("39.99", "45.50", "50.00", "60.75", "55.00")
+producers <- c("Producer 1", "Producer 2", "Producer 3", "Producer 4", "Producer 5")
+ratings <- c(4.5, 4.7, 4.0, 4.3, 4.8)
+reviews_counts <- c(100, 150, 200, 50, 120)
+
+# Create a data frame from the first 5 products
+num_products <- min(5, length(titles))
+data <- data.frame(
+  Title = titles[1:num_products],
+  Description = descriptions[1:num_products],
+  Price = prices[1:num_products]
+)
+data$Specifications <- specifications_list[1:num_products]
+
+```
+
+Scraped data was saved in dataframe and later extracted into `CSV` file: `kawa_with_bom_ok.CSV`.
+
+
+# Data cleaning
+
+At the begining of data cleaning, the used libraries are loaded.
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(stringi)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+```
+
+Previously saved dataframe with scraped data was imported into `df_kawa` dataframe in R with `UTF-8` encoding using `read_csv2`.
+
+```{r}
+df_kawa <- read_csv2("kawa_with_bom_ok.csv", locale = locale(encoding = "UTF-8"))
+```
+
+Next, a function `process_specifications` is defined to split and parse the specifications text into key-value pairs.
+The function:
+
+1. Splits the text by " | ".
+2. Extracts keys (before :) and values (after :).
+3. Returns a named list.
+
+This function is applied to the Specifications column in the dataset. This is because while importing specifications sucha as bitterness, acidity etc into a single dataframe columns, they were divided by " | ".
+
+
+```{r}
+# Define a function to process specifications from coffee data
+process_specifications <- function(specifications_text) {
+  specs <- stri_split_fixed(specifications_text, " | ", simplify = TRUE)
+  spec_names <- stri_extract(specs, regex = "^[^:]+(?=:)")
+  spec_values <- stri_extract(specs, regex = "(?<=:).+$")
+  spec_list <- setNames(spec_values, spec_names)
+  return(spec_list)
+}
+```
+
+Processed specifications are used for creating new columns and original `Specifications` column is removed from dataframe. Then the columns where there is more than 1000 empty values are removed due to being unnecessery for further analysis. Last step in segment below is used for chnging column names into english ones.
+
+
+```{r}
+specifications_processed <- lapply(df_kawa$Specifications, process_specifications)
+specifications_df <- bind_rows(specifications_processed)
+df_kawa <- bind_cols(df_kawa, specifications_df)
+df_kawa <- df_kawa %>% select(-Specifications)
+
+# Identify the number of non-NA values in each column
+non_na_counts <- colSums(!is.na(df_kawa))
+
+# Filter columns where the number of non-NA values is greater than or equal to 1000
+df_kawa_filtered <- df_kawa[, non_na_counts >= 1000]
+
+# Rename columns to English, with underscores instead of spaces and hyphens
+colnames(df_kawa_filtered) <- c(
+  "Title", "Description", "Price", "Producer", "Rating", "Number_of_reviews",
+  "Composition", "Roasting_degree", "Caffeine_content", "Type", "Roastery", 
+  "Purpose", "Packaging", "Preparation_method", "Crema", "Tastes", 
+  "Flavor_intensity", "Bitterness", "Acidity", "Sweetness", 
+  "Bean_origin", "Blend_or_Single", "Recommended_for", "Specialty_coffee"
+)
+
+# Replace spaces and hyphens with underscores in column names
+colnames(df_kawa_filtered) <- gsub(" |-", "_", colnames(df_kawa_filtered))
+```
+
+A function `convert_to_5_scale` standardizes subjective or numeric ratings (like "2/5" or "Medium") into a scale from 0.2 to 1:
+
+1. "Delicate" → 0.2
+2. "Medium" → 0.6
+3. "Strong" → 1
+
+Numerical fractions (e.g., "2/5") are converted to decimals.
+This is applied to columns such as `Bitterness`, `Acidity`, `Sweetness`, and `Flavor_intensity`.
+
+```{r}
+# Function to convert values to a 1/5 to 5/5 scale
+convert_to_5_scale <- function(value) {
+  value <- gsub(" ", "", value)  # Remove white spaces
+  if (grepl("Delicate", value)) {
+    return(0.2)
+  } else if (grepl("Medium", value)) {
+    return(0.6)
+  } else if (grepl("Strong", value)) {
+    return(1)
+  }
+  
+  # For numeric values like "2/5", "3/5"
+  if (grepl("^\\d+/\\d+$", value)) {
+    return(as.numeric(stri_extract(value, regex = "^\\d+")) / as.numeric(stri_extract(value, regex = "(?<=/).*")))
+  }
+  
+  # For numeric values like "1", "2", "3", "4", "5"
+  if (grepl("^\\d+$", value)) {
+    if (as.numeric(value) == 1) {
+      return(0.2)
+    } else if (as.numeric(value) == 2) {
+      return(0.4)
+    } else if (as.numeric(value) == 3) {
+      return(0.6)
+    } else if (as.numeric(value) == 4) {
+      return(0.8)
+    } else {
+      return(1)
+    }
+  }
+  
+  return(NA)
+}
+```
+
+Another change was dividing the price by 100 and format it to two decimal places. 
+```{r}
+df_kawa_filtered$Price <- as.numeric(df_kawa_filtered$Price) / 100
+df_kawa_filtered$Price <- format(df_kawa_filtered$Price, nsmall = 2)
+
+```
+
+Cleaned and filtered data was then saved into `kawa_filtered.csv` file. Full file with data cleaning can be found in attached file `cleaning.R`.
+
+# Analysis
+
+```{r}
+df_kawa_filtered <- read.csv("kawa_filtered.csv")
+# Price Range Analysis
+
+# Step 1: Standardize and clean the 'Packaging' column
+df_kawa_filtered$Weight_g <- as.numeric(gsub("[^0-9]", "", df_kawa_filtered$Packaging))
+
+# Handle specific cases
+df_kawa_filtered$Weight_g[grepl("Glass bottle", df_kawa_filtered$Packaging)] <- NA  # Non-numeric, set to NA
+
+# Step 2: Clean 'Price' and convert to numeric
+df_kawa_filtered$Price <- as.numeric(gsub(",", ".", gsub("\\s", "", df_kawa_filtered$Price)))
+
+# Step 3: Calculate "Price per Gram", excluding rows with NA in Weight_g or Price
+df_kawa_filtered <- df_kawa_filtered[!is.na(df_kawa_filtered$Weight_g) & !is.na(df_kawa_filtered$Price), ]
+df_kawa_filtered$Price_per_gram <- df_kawa_filtered$Price / df_kawa_filtered$Weight_g
+
+# Step 4: Group coffees into price ranges
+df_kawa_filtered$Price_range <- cut(
+  df_kawa_filtered$Price_per_gram,
+  breaks = c(0, 0.05, 0.1, 0.2, Inf),
+  labels = c("Budget (< 0.05)", "Mid-range (0.05 - 0.1)", "Premium (0.1 - 0.2)", "Luxury (> 0.2)"),
+  right = FALSE
+)
+
+# Adding Adjusted Ratings Column
+
+# Step 1: Handle NA values in 'Rating' and 'Number_of_reviews'
+df_kawa_filtered$Rating[is.na(df_kawa_filtered$Rating)] <- 0
+df_kawa_filtered$Number_of_reviews[is.na(df_kawa_filtered$Number_of_reviews)] <- 0
+
+# Step 2: Calculate the "Adjusted_rating"
+df_kawa_filtered$Adjusted_rating <- df_kawa_filtered$Rating * sqrt(df_kawa_filtered$Number_of_reviews)
+
+# Step 3: Preview the result
+head(df_kawa_filtered[, c("Rating", "Number_of_reviews", "Adjusted_rating")])
+
+head(df_kawa_filtered)
+
+summary_stats <- df_kawa_filtered %>%
+  select(Price, Rating, Number_of_reviews, Bitterness, Acidity, Sweetness, Flavor_intensity, Price_per_gram, Adjusted_rating) %>%
+  summary()
+
+# Save the dataframe to a CSV file
+write.csv(df_kawa_filtered, "kawa_filtered.csv", row.names = FALSE)
+```
+
+
+
+```{r}
+detailed_stats <- df_kawa_filtered %>%
+  select(Price, Rating, Number_of_reviews, Bitterness, Acidity, Sweetness, Flavor_intensity, Price_per_gram, Adjusted_rating) %>%
+  summarise(
+    Mean_Price = mean(Price, na.rm = TRUE),
+    SD_Price = sd(Price, na.rm = TRUE),
+    Min_Price = min(Price, na.rm = TRUE),
+    Max_Price = max(Price, na.rm = TRUE),
+    
+    Mean_Rating = mean(Rating, na.rm = TRUE),
+    SD_Rating = sd(Rating, na.rm = TRUE),
+    Min_Rating = min(Rating, na.rm = TRUE),
+    Max_Rating = max(Rating, na.rm = TRUE),
+    
+    Mean_Number_of_reviews = mean(Number_of_reviews, na.rm = TRUE),
+    SD_Number_of_reviews = sd(Number_of_reviews, na.rm = TRUE),
+    Min_Number_of_reviews = min(Number_of_reviews, na.rm = TRUE),
+    Max_Number_of_reviews = max(Number_of_reviews, na.rm = TRUE),
+    
+    Mean_Bitterness = mean(Bitterness, na.rm = TRUE),
+    SD_Bitterness = sd(Bitterness, na.rm = TRUE),
+    Min_Bitterness = min(Bitterness, na.rm = TRUE),
+    Max_Bitterness = max(Bitterness, na.rm = TRUE),
+    
+    Mean_Acidity = mean(Acidity, na.rm = TRUE),
+    SD_Acidity = sd(Acidity, na.rm = TRUE),
+    Min_Acidity = min(Acidity, na.rm = TRUE),
+    Max_Acidity = max(Acidity, na.rm = TRUE),
+    
+    Mean_Sweetness = mean(Sweetness, na.rm = TRUE),
+    SD_Sweetness = sd(Sweetness, na.rm = TRUE),
+    Min_Sweetness = min(Sweetness, na.rm = TRUE),
+    Max_Sweetness = max(Sweetness, na.rm = TRUE),
+    
+    Mean_Flavor_intensity = mean(Flavor_intensity, na.rm = TRUE),
+    SD_Flavor_intensity = sd(Flavor_intensity, na.rm = TRUE),
+    Min_Flavor_intensity = min(Flavor_intensity, na.rm = TRUE),
+    Max_Flavor_intensity = max(Flavor_intensity, na.rm = TRUE),
+    
+    Mean_Price_per_gram = mean(Price_per_gram, na.rm = TRUE),
+    SD_Price_per_gram = sd(Price_per_gram, na.rm = TRUE),
+    Min_Price_per_gram = min(Price_per_gram, na.rm = TRUE),
+    Max_Price_per_gram = max(Price_per_gram, na.rm = TRUE),
+    
+    Mean_Adjusted_rating = mean(Adjusted_rating, na.rm = TRUE),
+    SD_Adjusted_rating = sd(Adjusted_rating, na.rm = TRUE),
+    Min_Adjusted_rating = min(Adjusted_rating, na.rm = TRUE),
+    Max_Adjusted_rating = max(Adjusted_rating, na.rm = TRUE)
+  )
+
+# Display the statistics
+print(summary_stats)
+print(detailed_stats)
+```
+
+# Visualizations
+
+```{r}
+# Step 5: Visualize the distribution of products in each price range
+ggplot(df_kawa_filtered, aes(x = Price_range)) +
+  geom_bar(fill = "steelblue", color = "black") +
+  labs(
+    title = "Distribution of Products by Price Range",
+    x = "Price Range (PLN per Gram)",
+    y = "Number of Products"
+  ) +
+  theme_minimal()
+
+# Analyzing Producers, Number of Opinions, and Ratings
+
+# Step 1: Calculate the average number of ratings and adjusted ratings for each producer
+producer_analysis <- df_kawa_filtered %>%
+  group_by(Producer) %>%
+  summarise(
+    Avg_Num_Ratings = mean(Number_of_reviews, na.rm = TRUE),
+    Avg_Adjusted_Rating = mean(Adjusted_rating, na.rm = TRUE),
+    Count_Products = n()
+  ) %>%
+  arrange(desc(Avg_Num_Ratings))  # Sort by popularity
+
+# Step 2: Top producers by average number of ratings
+top_popular_producers <- producer_analysis %>%
+  top_n(10, Avg_Num_Ratings)
+
+# Step 3: Top producers by adjusted rating
+top_adjusted_rating_producers <- producer_analysis %>%
+  top_n(10, Avg_Adjusted_Rating)
+
+# Step 4: Visualize popularity
+ggplot(top_popular_producers, aes(x = reorder(Producer, Avg_Num_Ratings), y = Avg_Num_Ratings)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top Producers by Average Number of Ratings",
+    x = "Producer",
+    y = "Average Number of Ratings"
+  ) +
+  theme_minimal()
+
+ggplot(top_adjusted_rating_producers, aes(x = reorder(Producer, Avg_Adjusted_Rating), y = Avg_Adjusted_Rating)) +
+  geom_bar(stat = "identity", fill = "darkgreen") +
+  coord_flip() +
+  labs(
+    title = "Top Producers by Average Adjusted Rating",
+    x = "Producer",
+    y = "Average Adjusted Rating"
+  ) +
+  theme_minimal()
+
+# Correlation Analysis of Coffee Specifications and Adjusted Rating
+
+# Step 1: Prepare data for correlation analysis
+correlation_data <- df_kawa_filtered %>%
+  select(Acidity, Bitterness, Sweetness, Flavor_intensity, Adjusted_rating) %>%
+  na.omit()  # Remove rows with NA values
+
+# Step 2: Compute the correlation matrix
+correlation_matrix <- cor(correlation_data)
+
+# Convert matrix to long format for ggplot
+correlation_long <- melt(correlation_matrix)
+
+# Plot heatmap
+ggplot(correlation_long, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text = element_text(size = 10)
+  ) +
+  labs(
+    title = "Correlation Heatmap",
+    x = "Specifications",
+    y = "Specifications"
+  )
+
+# Distribution of Coffee Intensity (Flavor)
+ggplot(df_kawa_filtered, aes(x = Flavor_intensity)) +
+  geom_histogram(binwidth = 0.1, fill = "lightblue", color = "black") +
+  labs(
+    title = "Distribution of Coffee Intensity (Flavor)",
+    x = "Flavor Intensity (Scale 1-5)",
+    y = "Number of Products"
+  ) +
+  theme_minimal()
+
+# Coffee Price vs. Rating
+ggplot(df_kawa_filtered, aes(x = Price, y = Rating)) +
+  geom_point(color = "steelblue", alpha = 0.6) +
+  labs(
+    title = "Coffee Price vs. Rating",
+    x = "Price (PLN)",
+    y = "Rating"
+  ) +
+  theme_minimal()
+```
+
+# Summary
+
+In conclusion, this analysis provides valuable insights into the coffee market based on the available dataset. The price range analysis highlights how coffee prices vary per gram, revealing distinct categories from budget to luxury products. The relationship between coffee specifications and ratings shows how flavor profiles such as bitterness, acidity, and sweetness influence the overall coffee experience, with adjusted ratings offering a more nuanced evaluation that accounts for the number of opinions.
+
+By analyzing producers' data, we identified key players with the highest number of reviews and those with the highest average ratings. Visualizations of these trends help identify market leaders and trends that can guide consumer preferences. Moreover, the correlation analysis between various flavor characteristics and adjusted ratings uncovers relationships that may be critical for consumers seeking specific taste profiles.
+
+Overall, this report provides an in-depth exploration of coffee products, their ratings, and price ranges. The findings can serve as useful insights for consumers making purchasing decisions, as well as for producers looking to optimize their products and marketing strategies. Future work may involve expanding the analysis to include more granular data or incorporating consumer feedback to refine these findings further.
+

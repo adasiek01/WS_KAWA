@@ -32,8 +32,8 @@ This report focuses on the analysis of a large dataset of coffee products, which
 The information we got from konesso website contains several attributes, such as price, rating, number of opinions, flavor profiles (bitterness, acidity, sweetness, flavor intensity), and other product specifications like the coffee's origin, roaster, and packaging. Using this information, we perform a series of transformations and visualizations to provide a deeper understanding of how different factors contribute to coffee ratings and market pricing.   
 
 # Data scraping
-
-In order to obtain dataset with information from konesso website with all necessery attributes for analysis, we scrape these information using appropiate code in R.
+(
+In order to obtain dataset with information about bean coffees from konesso website (https://www.konesso.pl/pol_m_Kawa_Rodzaj_Kawa-ziarnista-2160.html) with all necessary attributes for analysis, we scrape this information using appropriate code in R.
 From each coffee bean product on konesso we scraped the following information: 
 
 1. Product name,
@@ -82,7 +82,7 @@ Once the page's content was retrieved successfully, it was parsed into an `HTML`
 
 The scraper iteratively processed each product container to extract specific attributes. For each attribute, list was initialized to store them. A delay of two seconds `(Sys.sleep(1))` was implemented between each iteration to avoid overwhelming the server and potential blocking.
 
-For the purpose of example, the code below contains sample data instead of scarped content. The full scaring code is available in the attachment file `scraper.R`.
+For the purpose of example, the code below contains sample data instead of scraped content. The full scraping code is available in the attachment file `scraper.R`.
 
 ```{r}
 
@@ -119,7 +119,7 @@ Scraped data was saved in dataframe and later extracted into `CSV` file: `kawa_w
 
 # Data cleaning
 
-At the begining of data cleaning, the used libraries are loaded.
+At the beginning of data cleaning, the used libraries are loaded.
 ```{r}
 # Load necessary libraries
 library(tidyverse)
@@ -156,7 +156,7 @@ process_specifications <- function(specifications_text) {
 }
 ```
 
-Processed specifications are used for creating new columns and original `Specifications` column is removed from dataframe. Then the columns where there is more than 1000 empty values are removed due to being unnecessery for further analysis. Last step in segment below is used for changing column names.
+Processed specifications are used for creating new columns and original `Specifications` column is removed from dataframe. Then the columns where there is more than 1000 empty values are removed due to being unnecessary for further analysis. Last step in segment below is used for changing column names.
 
 
 ```{r}
@@ -184,7 +184,7 @@ colnames(df_kawa_filtered) <- c(
 colnames(df_kawa_filtered) <- gsub(" |-", "_", colnames(df_kawa_filtered))
 ```
 
-The trouble we came across while initially analysing data from the website, mainy specifications, is that there are various scales used for describing coffee flavors and characteristics. In some cases, there were levels explained by words (like "weak", "medium", "strong") and sometimes the 1-5 scale was used. 
+The trouble we came across while initially analysing data from the website, mainly specifications, is that there are various scales used for describing coffee flavors and characteristics. In some cases, there were levels explained by words (like "weak", "medium", "strong") and sometimes the 1-5 scale was used. 
 A function `convert_to_5_scale` standardizes subjective or numeric ratings (like "2/5" or "Medium") into a scale from 0.2 to 1:
 
 1. "Delicate" → 0.2
@@ -310,8 +310,10 @@ The code part showed below creates a histogram which illustrates the distributio
 # Plotting distribution of price per gram
 ggplot(df_kawa_filtered, aes(x = Cena_za_gram)) +
   geom_histogram(binwidth = 0.01, fill = "skyblue", color = "black") +
-  labs(title = "Distribution of Price per Gram", x = "Price per Gram", y = "Number of Coffees")
+  labs(title = "Distribution of Price per Gram", x = "Price per Gram in PLN", y = "Number of Coffees")
 ```
+
+The histogram shows that most coffee prices fall between 0.1 - 0.2 PLN per gram, indicating a dominance of budget and mid-range products. A smaller premium segment exists, with prices exceeding 1 PLN per gram, but it is less common. The distribution suggests product clustering based on quality, branding, or processing methods. Overall, the market is primarily focused on affordable coffee, with fewer high-end options.
 
 A scatter plot is created to visualize the relationship between coffee prices and their ratings. The x-axis represents price, while the y-axis represents the rating. Points are plotted with semi-transparency (`alpha=0.5`) to manage overlapping data.
 This visualization explores whether premium pricing correlates with higher ratings, guiding pricing strategies for high-quality products.
@@ -321,8 +323,10 @@ This visualization explores whether premium pricing correlates with higher ratin
 # Scatter plot of price vs rating
 ggplot(df_kawa_filtered, aes(x = Cena, y = Ocena)) +
   geom_point(color = "blue", alpha = 0.5) +
-  labs(title = "Price vs Rating", x = "Price", y = "Rating")
+  labs(title = "Price vs Rating", x = "Price per Kilograms in PLN", y = "Rating")
 ```
+
+The scatter plot shows the relationship between coffee price and rating. Most ratings cluster around 4-5, regardless of price, suggesting that both budget and expensive coffees tend to receive high ratings. However, there are also many zero ratings, which could indicate missing data or products with no reviews. There is no clear upward trend, meaning higher prices do not necessarily correlate with better ratings.
 
 A boxplot groups coffee products by predefined price ranges and compares their ratings. The box's height represents the interquartile range (IQR), showing the middle 50% of ratings for each price range. Outliers are marked separately.
 Understanding the distribution of ratings across price tiers highlights which segments offer the best value for customers.
@@ -335,11 +339,12 @@ ggplot(df_kawa_filtered, aes(x = Przedział_cenowy, y = Ocena)) +
   labs(title = "Rating by Price Range", x = "Price Range", y = "Rating")
 ```
 
+The Rating by Price Range chart shows that both budget and premium coffees receive similarly high ratings, while mid-range coffees exhibit greater variation. The median rating remains consistently high across all categories, suggesting that price does not strongly influence customer satisfaction.
+
 The code aggregates data to identify the producers with the highest number of total reviews. The `ggplot2` library generates a horizontal bar chart, showing producers ordered by review count.
 This plot identifies producers with strong market presence and customer trust, valuable for deciding partnerships or key product lines.
 
 ```{r}
-
 # Identify Most Popular Producers
 # Count reviews per producer
 popular_producers <- df_kawa_filtered %>%
@@ -349,11 +354,13 @@ popular_producers <- df_kawa_filtered %>%
   head(5)
 
 # Bar plot of most popular producers
-ggplot(popular_producers, aes(x = reorder(Producent, -Total_Reviews), y = Total_Reviews)) +
+ggplot(popular_producers, aes(x = reorder(Producent, Total_Reviews), y = Total_Reviews)) +
   geom_bar(stat = "identity", fill = "dodgerblue") +
   coord_flip() +
   labs(title = "Top 5 Most Popular Producers by Total Reviews", x = "Producer", y = "Total Reviews")
 ```
+
+The Top 5 Most Popular Producers by Total Reviews chart highlights that LAVAZZA and DALLMAYR are the most reviewed brands, indicating strong customer engagement and market presence. Other producers have significantly fewer reviews, suggesting either a smaller customer base or lower brand recognition.
 
 This section identifies the top producers offering the cheapest coffee products based on average price per gram. The data is grouped by producer and the mean price per gram is calculated for each producer. The data is then sorted in ascending order, and the top 5 producers are selected.The x-axis represents producers (reordered by average price) and the y-axis represents the average price per gram.
 Highlighting producers with affordable products supports decisions to stock budget-friendly options, catering to price-sensitive customers.
@@ -374,38 +381,42 @@ ggplot(cheapest_producers, aes(x = reorder(Producent, Average_Price), y = Averag
   labs(title = "Top 5 Producers with Cheapest Products", x = "Producer", y = "Average Price per Gram")
 ```
 
+The Top 5 Producers with Cheapest Products chart reveals that COSTA COFFEE and JACOBS offer the most affordable coffee per gram, making them attractive budget options. Interestingly, some well-known brands like DALLMAYR also appear among the cheapest, indicating a broad price range within their product lines. Overall, these insights suggest that price does not directly determine quality, a few brands dominate in popularity, and affordability remains a key factor for many producers.
+
 This visualization highlights producers with the highest average ratings. Bars represent average ratings, while overlayed points (scaled to 1/10th of total reviews) indicate the number of reviews per producer.
 Combining rating and popularity data helps pinpoint producers that deliver both quality and customer satisfaction.
 
 ```{r}
-#Producers with Best Reviews and most reviews
+# Producers with Best Reviews and most reviews
 # Calculate average rating and total reviews per producer
 producers_stats <- df_kawa_filtered %>%
   group_by(Producent) %>%
   summarise(
-    Average_Rating = mean(Ocena, na.rm = TRUE),
+    Average_Rating = round(mean(Ocena, na.rm = TRUE), 2),  # Zaokrąglamy do 2 miejsc po przecinku
     Total_Reviews = sum(Liczba_opinii, na.rm = TRUE)
   ) %>%
   arrange(desc(Average_Rating))
 
-# Filter for the top producers (e.g., top 5 by average rating)
+# Filter for the top producers (e.g., top 10 by average rating)
 top_producers_stats <- producers_stats %>%
   head(10)
 
 # Bar plot showing both average rating and total reviews with labels
 ggplot(top_producers_stats, aes(x = reorder(Producent, -Average_Rating))) +
   geom_bar(aes(y = Average_Rating), stat = "identity", fill = "gold", alpha = 0.7) +
-  geom_point(aes(y = Total_Reviews / 10), color = "blue", size = 3) + # Adjust scaling for clarity
-  geom_line(aes(y = Total_Reviews / 10, group = 1), color = "blue", linetype = "dashed") +
-  geom_text(aes(y = Total_Reviews / 10, label = Average_Rating), vjust = -0.5, color = "blue", size = 4) + # Add labels for reviews
+  geom_point(aes(y = Total_Reviews), color = "blue", size = 3) + # Removed scaling
+  geom_line(aes(y = Total_Reviews, group = 1), color = "blue", linetype = "dashed") +
+  geom_text(aes(y = Total_Reviews, label = Average_Rating), vjust = -0.5, color = "blue", size = 4) + # Added labels for reviews
   labs(
     title = "Top Producers: Rating and Number of Reviews",
     x = "Producer",
-    y = "Average Rating (Bar) / Total Reviews (Scaled by 1/10)",
+    y = "Average Rating (Bar) / Total Reviews"
   ) +
   theme_minimal() +
   coord_flip()
 ```
+
+The Top Producers: Rating and Number of Reviews chart shows a positive correlation between the number of reviews and average ratings. Well-known brands such as LAVAZZA and PELLINI have both high ratings and a large number of reviews, indicating strong customer trust and widespread market presence. Lesser-known brands tend to have fewer reviews and more varied ratings, suggesting they may not yet have established a strong reputation. 
 
 This part of the R code calculates the correlation between various coffee attributes (e.g., bitterness, acidity, sweetness, price) using the `cor` function and visualizes the results with a heatmap. The `reshape2` library is used to melt the correlation matrix into a format suitable for plotting.
 Identifying relationships between attributes helps understand which characteristics influence coffee ratings, supporting decisions about which products to prioritize.
@@ -426,6 +437,8 @@ ggplot(melted_correlation, aes(Var1, Var2, fill = value)) +
   labs(title = "Correlation Heatmap", x = "Variable", y = "Variable")
 
 ```
+
+The Correlation Heatmap provides insights into relationships between various factors such as ratings, price, and product attributes. Strong correlations between certain variables can help identify key drivers of customer satisfaction and pricing trends. This type of analysis is useful for understanding how different factors influence purchasing decisions, enabling better product positioning and marketing strategies.
 
 # Summary
 

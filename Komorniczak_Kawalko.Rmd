@@ -333,10 +333,16 @@ Understanding the distribution of ratings across price tiers highlights which se
 
 ```{r}
 
-# Boxplot by price range
+df_kawa_filtered$Przedział_cenowy <- factor(df_kawa_filtered$Przedział_cenowy, 
+                                            levels = c("Budget (< 0.05)", 
+                                                       "Mid-range (0.05 - 0.1)", 
+                                                       "Premium (0.1 - 0.2)", 
+                                                       "Luxury (> 0.2)"))
+
 ggplot(df_kawa_filtered, aes(x = Przedział_cenowy, y = Ocena)) +
   geom_boxplot(fill = "lightgreen") +
   labs(title = "Rating by Price Range", x = "Price Range", y = "Rating")
+
 ```
 
 The Rating by Price Range chart shows that both luxury and premium coffees receive various ratings, while the budget and mid-range receive mostly 5-star ratings. This suggests that customers might have various opinions on coffee with high price (maybe due to high expectations), but their opinions on more budget-friendly options are mainly positive.

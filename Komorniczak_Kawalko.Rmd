@@ -32,7 +32,7 @@ This report focuses on the analysis of a large dataset of coffee products, which
 The information we got from konesso website contains several attributes, such as price, rating, number of opinions, flavor profiles (bitterness, acidity, sweetness, flavor intensity), and other product specifications like the coffee's origin, roaster, and packaging. Using this information, we perform a series of transformations and visualizations to provide a deeper understanding of how different factors contribute to coffee ratings and market pricing.   
 
 # Data scraping
-(
+
 In order to obtain dataset with information about bean coffees from konesso website (https://www.konesso.pl/pol_m_Kawa_Rodzaj_Kawa-ziarnista-2160.html) with all necessary attributes for analysis, we scrape this information using appropriate code in R.
 From each coffee bean product on konesso we scraped the following information: 
 
@@ -339,7 +339,7 @@ ggplot(df_kawa_filtered, aes(x = Przedział_cenowy, y = Ocena)) +
   labs(title = "Rating by Price Range", x = "Price Range", y = "Rating")
 ```
 
-The Rating by Price Range chart shows that both budget and premium coffees receive similarly high ratings, while mid-range coffees exhibit greater variation. The median rating remains consistently high across all categories, suggesting that price does not strongly influence customer satisfaction.
+The Rating by Price Range chart shows that both luxury and premium coffees receive various ratings, while the budget and mid-range receive mostly 5-star ratings. This suggests that customers might have various opinions on coffee with high price (maybe due to high expectations), but their opinions on more budget-friendly options are mainly positive.
 
 The code aggregates data to identify the producers with the highest number of total reviews. The `ggplot2` library generates a horizontal bar chart, showing producers ordered by review count.
 This plot identifies producers with strong market presence and customer trust, valuable for deciding partnerships or key product lines.
@@ -447,4 +447,3 @@ This report supports coffee shop assortment selection by analyzing data scraped 
 The analysis revealed that intensity of flavor has a stronger correlation with customer ratings, suggesting that more intense coffees tend to receive higher scores. In contrast, bitterness, sweetness, and acidity showed weaker or negligible correlations with ratings, indicating that these attributes do not significantly impact overall customer preferences.Pricing analysis indicated that while higher-priced products consistently deliver quality, midrange options often combine affordability with strong ratings, appealing to value-conscious consumers. Producer analysis highlighted those with high customer trust and top ratings as ideal candidates for partnerships, while identifying affordable producers to cater to budget-conscious segments.
 
 The findings emphasize the importance of offering a diverse range of products spanning budget, midrange, and premium categories, enabling coffee shops to meet varied customer needs. By prioritizing products with favorable intensity levels and selecting trusted producers, businesses can optimize their offerings to attract a broad audience and strengthen their market position.
-
